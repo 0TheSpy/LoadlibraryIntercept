@@ -10,11 +10,8 @@ pass_args inject_args;
       
 #include "stuff.h"  
  
-bool Inject(LPWSTR procname, bool existing)
-{  
-	wchar_t procname1[MAX_PATH]; memset(procname1, 0, MAX_PATH);
-	memcpy(procname1, procname, MAX_PATH);
-  
+bool Inject(wchar_t procname[MAX_PATH], bool existing)
+{   
 	HANDLE hToken; 
 	OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken);
 	SetPrivilege(hToken, "SeBackupPrivilege", 1);
@@ -56,7 +53,7 @@ bool Inject(LPWSTR procname, bool existing)
 
 		SI.StartupInfo.cb = sizeof(STARTUPINFOEXW);
 
-		if (!CreateProcessW(NULL, procname1, NULL, NULL, NULL,
+		if (!CreateProcessW(NULL, procname, NULL, NULL, NULL,
 			EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, NULL, &SI.StartupInfo, &PI))
 			printfdbg("CreateProcessW error %s\n", GetLastErrorAsText());
 
@@ -121,7 +118,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	printfdbg("console alloc\n"); 
 #endif 
 	 
-	wchar_t* procname = 0; 
+	wchar_t procname[MAX_PATH] = L""; bool hprocname = false;
 	wchar_t* modules = 0;
 	bool existing = false; 
 	 
@@ -133,8 +130,9 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	for (int i = 0; i < nArgs; i++) {  
 		if (wcsstr(szArglist[i], L"-t") || wcsstr(szArglist[i], L"-target")) {
 			if (i + 1 < nArgs) {
-				i++;
-				procname = szArglist[i]; 
+				i++; 
+				memcpy(procname, szArglist[i], MAX_PATH); 
+				hprocname = true;
 				printf("Target process name %ls\n", procname);
 			} 
 			else {
@@ -165,7 +163,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		}
 
 	} 
-	if (!procname)
+	if (!hprocname)
 	{ 
 		printfdbg("Target process not found!\n");
 		system("pause");
