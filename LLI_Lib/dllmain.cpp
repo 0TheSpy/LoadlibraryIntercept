@@ -12,6 +12,7 @@ struct pass_args
     wchar_t modules[MAX_PATH]; 
 };
 bool havemodule = false;
+bool pauseEveryModule = false;
 wchar_t modules[MAX_PATH];
   
 #define CONSOLE 
@@ -47,6 +48,12 @@ NTSTATUS __stdcall hkLdrLoadDll(UINT32 Flags, PUINT32 Reserved, PUNICODE_STRING 
     //return if already loaded 
     //if (hDll = GetModuleHandleW(DllName->Buffer))  return NtLdrLoadDll(Flags, Reserved, DllName, BaseAddress);
 
+    if (pauseEveryModule && (!wcsstr(DllName->Buffer, L"ntdll.dll")) && (!wcsstr(DllName->Buffer, L"apphelp.dll")))
+    {
+        printfdbg("NtLdrLoadDll %ls\n", DllName->Buffer);
+        system("pause"); 
+    }
+    
     bool foundModule = false;
     if (havemodule && wcsstr(DllName->Buffer, modules))
     {
@@ -141,7 +148,11 @@ extern "C" __declspec(dllexport) int InitFn(pass_args * argumento)
 { 
     havemodule = argumento->havemodule;
     if (havemodule)
-        memcpy(modules, argumento->modules, MAX_PATH);  
+    {
+        memcpy(modules, argumento->modules, MAX_PATH); 
+        if (wcsstr(modules, L"pauseeverymodule"))
+            pauseEveryModule = true;
+    } 
     CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitFunc, NULL, 0, NULL);
     return 1;
 }
