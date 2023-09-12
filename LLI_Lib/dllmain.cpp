@@ -150,7 +150,7 @@ extern "C" __declspec(dllexport) int InitFn(pass_args * argumento)
     if (havemodule)
     {
         memcpy(modules, argumento->modules, MAX_PATH); 
-        if (wcsstr(modules, L"pauseeverymodule"))
+        if (wcsstr(modules, L"everymodule"))
             pauseEveryModule = true;
     } 
     CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)InitFunc, NULL, 0, NULL);
