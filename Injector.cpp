@@ -96,6 +96,7 @@ bool Inject(wchar_t procname[MAX_PATH], bool existing)
 		param, 0, 0);
 
 	if (!existing) {
+		Sleep(1000);
 		if (ResumeThread(PI.hThread))
 		{
 			CloseHandle(PI.hProcess);
