@@ -71,30 +71,41 @@ NTSTATUS __stdcall hkLdrLoadDll(UINT32 Flags, PUINT32 Reserved, PUNICODE_STRING 
 }
 
 #include <tlhelp32.h>
-char* GetModuleOfAddress(DWORD address) {
-    MODULEENTRY32 me32 = { 0 };
+wchar_t* GetModuleOfAddress(DWORD address) {
+    MODULEENTRY32W me32 = { 0 };
     HANDLE hModuleSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, 0);
-    me32.dwSize = sizeof(MODULEENTRY32); 
-    if (Module32First(hModuleSnap, &me32))
+    me32.dwSize = sizeof(MODULEENTRY32W);
+    if (Module32FirstW(hModuleSnap, &me32))
     {
         do
-        { 
+        {
             DWORD modEnd = (DWORD)me32.modBaseAddr + (DWORD)me32.modBaseSize;
             if (address >= (DWORD)me32.modBaseAddr && address <= modEnd) {
                 return me32.szModule;
             }
-        } while (Module32Next(hModuleSnap, &me32));
-    } 
-    return (char*)""; 
+        } while (Module32NextW(hModuleSnap, &me32));
+    }
+    return (wchar_t*)L"";
 }
+
+typedef NTSTATUS(NTAPI* pLdrUnloadDll)(HMODULE hModule);
+pLdrUnloadDll NtLdrUnloadDll = (pLdrUnloadDll)GetProcAddress(GetModuleHandleA("ntdll.dll"), "LdrUnloadDll");
+NTSTATUS __stdcall hkLdrUnloadDll(HMODULE hModule)
+{
+    wchar_t* modName = GetModuleOfAddress((DWORD)hModule); 
+    printfdbg("Unloading %x %ls\n", hModule, GetModuleOfAddress((DWORD)hModule));
+    if (pauseEveryModule && !wcsstr(modName, L"ntdll.dll"))
+        system("pause");
+    return NtLdrUnloadDll(hModule);
+}
+
 
 typedef NTSTATUS(NTAPI* ZwCreateThreadEx_t) (    OUT PHANDLE hThread,    IN ACCESS_MASK DesiredAccess,    IN PVOID ObjectAttributes,    IN HANDLE ProcessHandle,    IN PVOID lpStartAddress,    IN PVOID lpParameter,    IN ULONG Flags,    IN SIZE_T StackZeroBits,    IN SIZE_T SizeOfStackCommit,    IN SIZE_T SizeOfStackReserve,    OUT LPVOID lpBytesBuffer);
 ZwCreateThreadEx_t _NtCreateThreadEx = (ZwCreateThreadEx_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtCreateThreadEx");
 
 NTSTATUS __stdcall hkCreateThreadEx(
     OUT PHANDLE hThread, IN ACCESS_MASK DesiredAccess, IN PVOID ObjectAttributes, IN HANDLE ProcessHandle, IN PVOID lpStartAddress,    IN PVOID lpParameter,    IN ULONG Flags,    IN SIZE_T StackZeroBits,    IN SIZE_T SizeOfStackCommit,    IN SIZE_T SizeOfStackReserve,    OUT LPVOID lpBytesBuffer)
-{ 
-    //char* ModuleName = GetModuleOfAddress((DWORD)lpStartAddress); 
+{  
     if (needPause == (int)GetCurrentThread()) {
     //    printfdbg("_NtCreateThreadEx %s: %x \n", ModuleName, lpStartAddress);
         system("pause"); 
@@ -118,11 +129,13 @@ DWORD WINAPI InitFunc() {
         printfdbg("Module %ls\n", modules);
     printfdbg("NtLdrLoadDll %x\n", NtLdrLoadDll);
     printfdbg("NtCreateThreadEx %x\n", _NtCreateThreadEx); 
+    printfdbg("NtLdrUnloadDll %x\n", NtLdrUnloadDll); 
     printfdbg("=========================\n");
 
     NtLdrLoadDll = (pLdrLoadDll)DetourFunction((PBYTE)NtLdrLoadDll, (PBYTE)hkLdrLoadDll);
     _NtCreateThreadEx = (ZwCreateThreadEx_t)DetourFunction((PBYTE)_NtCreateThreadEx, (PBYTE)hkCreateThreadEx);
-   
+    NtLdrUnloadDll = (pLdrUnloadDll)DetourFunction((PBYTE)NtLdrUnloadDll, (PBYTE)hkLdrUnloadDll);
+
     while (1) { 
         Sleep(10);
         if (GetAsyncKeyState(VK_DELETE))  break;
@@ -137,6 +150,7 @@ DWORD WINAPI InitFunc() {
 
     DetourRemove(reinterpret_cast<BYTE*>(NtLdrLoadDll), reinterpret_cast<BYTE*>(hkLdrLoadDll));
     DetourRemove(reinterpret_cast<BYTE*>(_NtCreateThreadEx), reinterpret_cast<BYTE*>(hkCreateThreadEx));
+    DetourRemove(reinterpret_cast<BYTE*>(NtLdrUnloadDll), reinterpret_cast<BYTE*>(hkLdrUnloadDll));
 
     Sleep(100);
     FreeLibraryAndExitThread(myhModule, 0);
