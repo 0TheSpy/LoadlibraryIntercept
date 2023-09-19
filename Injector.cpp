@@ -4,6 +4,7 @@
 struct pass_args    
 { 
 	bool havemodule = false;   
+	bool hwidspoof = false;
 	wchar_t modules[MAX_PATH];       
 };        
 pass_args inject_args;         
@@ -97,6 +98,7 @@ bool Inject(wchar_t procname[MAX_PATH], bool existing)
 
 	if (!existing) {
 		Sleep(1000);
+
 		if (ResumeThread(PI.hThread))
 		{
 			CloseHandle(PI.hProcess);
@@ -163,6 +165,11 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 			existing = true;
 		}
 
+		if (wcsstr(szArglist[i], L"-hwid")) {
+			printf("Spoofing HWID\n");
+			inject_args.hwidspoof = true;
+		}
+
 	} 
 	if (!hprocname)
 	{ 
@@ -183,5 +190,4 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
  
 
  
-
 
