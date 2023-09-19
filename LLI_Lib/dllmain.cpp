@@ -374,6 +374,13 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
         //return false; 
         bool bRet = DeviceIoControl_t(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned, lpOverlapped);
 
+        if (dwIoControlCode == IOCTL_ATA_PASS_THROUGH)  //0x4D02C
+        {
+            char* pSerialNum = (char*)((DWORD)lpOutBuffer + 0x40);
+            printfdbg("IOCTL_ATA_PASS_THROUGH Serial %s\n", pSerialNum);
+            Fill(pSerialNum);
+        }
+
         if (dwIoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
         {
             auto miniport_query = reinterpret_cast<SRB_IO_CONTROL*>(lpOutBuffer);
@@ -463,21 +470,25 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
 { 
     if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) 
     {
-        printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n",FileHandle,GetHandleTypeName(FileHandle), IoControlCode, OutputBuffer); 
-        //return false;
-
+        printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n", FileHandle, GetHandleTypeName(FileHandle), IoControlCode, OutputBuffer);
+         
         auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
          
-        if (IoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //0x2d1400
+        if (IoControlCode == IOCTL_ATA_PASS_THROUGH)  //0x4D02C
         {
-            STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)OutputBuffer;
-            char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x5A);
-
-            printfdbg("IOCTL_STORAGE_QUERY_PROPERTY (%x) %s \n", tpStorageDeviceDescripter, pSerialNum);
-
-            Fill(pSerialNum); 
+            char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x40); 
+            printfdbg("IOCTL_ATA_PASS_THROUGH Serial %s\n", pSerialNum); 
+            Fill(pSerialNum);  
         }
 
+        if (IoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //0x2d1400
+        {
+            //STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)OutputBuffer;
+            char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x5A);
+            printfdbg("IOCTL_STORAGE_QUERY_PROPERTY %s \n", pSerialNum);
+            Fill(pSerialNum); 
+        }
+         
         if (IoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
         {
             auto miniport_query = reinterpret_cast<SRB_IO_CONTROL*>(OutputBuffer);
@@ -519,7 +530,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
             SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)InputBuffer;
             SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)OutputBuffer;
 
-            printfdbg("SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n", cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
+            printfdbg("SMART_RCV_DRIVE_DATA sz %d SERIAL %s\n", cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20));
 
             Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize); 
         }
