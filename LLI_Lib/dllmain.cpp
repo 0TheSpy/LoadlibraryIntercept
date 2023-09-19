@@ -346,6 +346,26 @@ typedef struct _IDINFO
     USHORT    wReserved89[167];
 } IDINFO, * PIDINFO;
 
+wchar_t* GetHandleTypeName(HANDLE hHandle)
+{
+    typedef NTSTATUS(NTAPI* NtQueryObjectPtr)(
+        HANDLE Handle,
+        OBJECT_INFORMATION_CLASS ObjectInformationClass,
+        PVOID ObjectInformation,
+        ULONG ObjectInformationLength,
+        PULONG ReturnLength);
+    HMODULE hMod = LoadLibrary(_T("NtDll.dll"));
+    NtQueryObjectPtr QueryObj = (NtQueryObjectPtr) ::GetProcAddress(hMod, "NtQueryObject");
+    assert(QueryObj);
+    ULONG OutSize = 0;
+    NTSTATUS NtStatus = QueryObj(hHandle, OBJECT_INFORMATION_CLASS(1), NULL, 0, &OutSize);
+    std::vector<BYTE> buffer(OutSize);
+    PVOID TypeInfo = &buffer[0];
+    ULONG InSize = OutSize;
+    NtStatus = QueryObj(hHandle, OBJECT_INFORMATION_CLASS(1), TypeInfo, InSize, &OutSize);
+    return (wchar_t*)((DWORD)TypeInfo + 0x8);
+}
+
 bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
 {
     bool bRet = DeviceIoControl_t(hDevice,
@@ -357,87 +377,158 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
         lpBytesReturned,
         lpOverlapped);
 
-    if (dwIoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
-    {
-        auto miniport_query = reinterpret_cast<SRB_IO_CONTROL*>(lpOutBuffer);
+    if (std::find(handleslist.begin(), handleslist.end(), hDevice) != handleslist.end()) { 
+        printfdbg("DeviceIoControl H:%x %ls ControlCode %x Output %x\n", hDevice, GetHandleTypeName(hDevice), dwIoControlCode, lpOutBuffer);
 
-        if (miniport_query->ControlCode == 0x1B0501) //IOCTL_SCSI_MINIPORT_IDENTIFY
+        if (dwIoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
         {
-            const auto params = reinterpret_cast<SENDCMDOUTPARAMS*>(reinterpret_cast<uint64_t>(lpOutBuffer) + static_cast<uint64_t>(sizeof(SRB_IO_CONTROL)));
-            const auto info = reinterpret_cast<IDINFO*>(params->bBuffer);
-            const auto serial_number = reinterpret_cast<uint8_t*>(info->sSerialNumber);
-            const auto model_number = reinterpret_cast<uint8_t*>(info->sModelNumber);
+            auto miniport_query = reinterpret_cast<SRB_IO_CONTROL*>(lpOutBuffer);
 
-            Fill(info->sSerialNumber);
-            Fill(info->sModelNumber);
+            if (miniport_query->ControlCode == 0x1B0501) //IOCTL_SCSI_MINIPORT_IDENTIFY
+            {
+                const auto params = reinterpret_cast<SENDCMDOUTPARAMS*>(reinterpret_cast<uint64_t>(lpOutBuffer) + static_cast<uint64_t>(sizeof(SRB_IO_CONTROL)));
+                const auto info = reinterpret_cast<IDINFO*>(params->bBuffer);
+                const auto serial_number = reinterpret_cast<uint8_t*>(info->sSerialNumber);
+                const auto model_number = reinterpret_cast<uint8_t*>(info->sModelNumber);
 
-            printfdbg("DeviceIoControl H:%x IOCTL_SCSI_MINIPORT Serial %s %s .\n",
-                hDevice, serial_number, model_number);
+                printfdbg("IOCTL_SCSI_MINIPORT Serial %s %s .\n",
+                    serial_number, model_number);
+
+                Fill(info->sSerialNumber);
+                Fill(info->sModelNumber);
+            }
+            else 
+            {
+                printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n", miniport_query->ControlCode);
+            }
         }
-        // else {}
-    }
 
-    if (dwIoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
-    {
-        DISK_GEOMETRY* pdg = (DISK_GEOMETRY*)lpOutBuffer;
-        if (bRet)
+        if (dwIoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
         {
-            ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
-                (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
-            printf("DeviceIoControl H:%x IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64d MediaType %x\n",
-                hDevice, pdg->Cylinders, DiskSize, pdg->MediaType);
+            DISK_GEOMETRY* pdg = (DISK_GEOMETRY*)lpOutBuffer;
+            if (bRet)
+            {
+                ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
+                    (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
+                printf("IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64u MediaType %hhx\n",
+                    pdg->Cylinders, DiskSize, pdg->MediaType);
+            }
+        }
+
+        if (dwIoControlCode == SMART_GET_VERSION)  //0x074080
+        {
+            GETVERSIONINPARAMS* gvip = (GETVERSIONINPARAMS*)lpOutBuffer;
+            printfdbg("SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
+                gvip->bVersion, gvip->bRevision, (unsigned)gvip->fCapabilities, gvip->bIDEDeviceMap);
+
+            //return false; 
+        }
+
+        if (dwIoControlCode == SMART_RCV_DRIVE_DATA)  //0x07C088
+        {
+            SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
+            SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
+
+            printfdbg("SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n",
+                cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
+
+            Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
+        }
+
+        if (dwIoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //2d1400
+        {
+            STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)lpOutBuffer;
+            //printfdbg("IOCTL_STORAGE_QUERY_PROPERTY %x Vendor %x ProductID %x Revision %x Serial %x \n", tpStorageDeviceDescripter, tpStorageDeviceDescripter->VendorIdOffset,
+            //    tpStorageDeviceDescripter->ProductIdOffset, tpStorageDeviceDescripter->ProductRevisionOffset, tpStorageDeviceDescripter->SerialNumberOffset);
+
+            __try {
+                LPSTR ProductId = tpStorageDeviceDescripter->ProductIdOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->ProductIdOffset : NULL;
+                LPSTR VendorId = tpStorageDeviceDescripter->VendorIdOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->VendorIdOffset : NULL;
+                LPSTR Serial = tpStorageDeviceDescripter->SerialNumberOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->SerialNumberOffset : NULL;
+                LPSTR Revision = tpStorageDeviceDescripter->ProductRevisionOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->ProductRevisionOffset : NULL;
+
+                printfdbg("IOCTL_STORAGE_QUERY_PROPERTY (%x) %s \n", tpStorageDeviceDescripter, Serial);
+
+                if (ProductId) Fill(ProductId);
+                if (VendorId)  Fill(VendorId);
+                if (Serial)    Fill(Serial);
+                if (Revision)  Fill(Serial);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) {
+                printf("[IOCTL_STORAGE_QUERY_PROPERTY]: Exception catched!\r\n");
+            }
+            //   ((STORAGE_PROPERTY_QUERY*)lpOutBuffer)->PropertyId = (STORAGE_PROPERTY_ID)0;
         }
     }
-
-    if (dwIoControlCode == SMART_GET_VERSION)  //0x074080
-    {
-        GETVERSIONINPARAMS* gvip = (GETVERSIONINPARAMS*)lpOutBuffer;
-        printfdbg("DeviceIoControl H:%x SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
-            hDevice, gvip->bVersion, gvip->bRevision, (unsigned)gvip->fCapabilities, gvip->bIDEDeviceMap);
-
-        //return false; 
-    }
-
-    if (dwIoControlCode == SMART_RCV_DRIVE_DATA)  //0x07C088
-    {
-        SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
-        SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
-
-        Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
-
-        printfdbg("DeviceIoControl H:%x SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n",
-            hDevice, cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
-    }
-
-    if (dwIoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //2d1400
-    {
-        STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)lpOutBuffer;
-        //printfdbg("DeviceIoControl H:%x IOCTL_STORAGE_QUERY_PROPERTY %x Vendor %x ProductID %x Revision %x Serial %x \n", hDevice, tpStorageDeviceDescripter, tpStorageDeviceDescripter->VendorIdOffset,
-        //    tpStorageDeviceDescripter->ProductIdOffset, tpStorageDeviceDescripter->ProductRevisionOffset, tpStorageDeviceDescripter->SerialNumberOffset);
-
-        __try {
-            LPSTR ProductId = tpStorageDeviceDescripter->ProductIdOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->ProductIdOffset : NULL;
-            LPSTR VendorId = tpStorageDeviceDescripter->VendorIdOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->VendorIdOffset : NULL;
-            LPSTR Serial = tpStorageDeviceDescripter->SerialNumberOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->SerialNumberOffset : NULL;
-            LPSTR Revision = tpStorageDeviceDescripter->ProductRevisionOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->ProductRevisionOffset : NULL;
-
-            if (ProductId) Fill(ProductId);
-            if (VendorId)  Fill(VendorId);
-            if (Serial)    Fill(Serial);
-            if (Revision)  Fill(Serial);
-
-            printfdbg("NtDeviceIoControlFile H:%x IOCTL_STORAGE_QUERY_PROPERTY (%x) %s \n",
-                hDevice, tpStorageDeviceDescripter, Serial);
-        }
-        __except (EXCEPTION_EXECUTE_HANDLER) {
-            printf("[IOCTL_STORAGE_QUERY_PROPERTY]: Exception catched!\r\n");
-        }
-        //   ((STORAGE_PROPERTY_QUERY*)lpOutBuffer)->PropertyId = (STORAGE_PROPERTY_ID)0;
-    }
-
-    //printfdbg("DeviceIoControl %d | hDevice %x dwIoControlCode %x lpInBuffer %x lpOutBuffer %x\n", bRet, hDevice, dwIoControlCode, lpInBuffer, lpOutBuffer);
 
     return bRet;
+}
+
+typedef NTSTATUS(NTAPI* NtDeviceIoControlFile_t) (HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
+NtDeviceIoControlFile_t _NtDeviceIoControlFile = (NtDeviceIoControlFile_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtDeviceIoControlFile");
+NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock,
+    ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength)
+{
+    if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) {
+        printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n",FileHandle,GetHandleTypeName(FileHandle), IoControlCode, OutputBuffer); 
+
+        auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
+         
+        if (IoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //0x2d1400
+        {
+            STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)OutputBuffer;
+            char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x5A);
+
+            printfdbg("IOCTL_STORAGE_QUERY_PROPERTY (%x) %s \n", tpStorageDeviceDescripter, pSerialNum);
+
+            Fill(pSerialNum); 
+        }
+
+        if (IoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
+        {
+            auto miniport_query = reinterpret_cast<SRB_IO_CONTROL*>(OutputBuffer);
+
+            if (miniport_query->ControlCode == 0x1B0501) //IOCTL_SCSI_MINIPORT_IDENTIFY
+            {
+                const auto params = reinterpret_cast<SENDCMDOUTPARAMS*>(reinterpret_cast<uint64_t>(OutputBuffer) + static_cast<uint64_t>(sizeof(SRB_IO_CONTROL)));
+                const auto info = reinterpret_cast<IDINFO*>(params->bBuffer);
+                const auto serial_number = reinterpret_cast<uint8_t*>(info->sSerialNumber);
+                const auto model_number = reinterpret_cast<uint8_t*>(info->sModelNumber);
+                 
+                printfdbg("IOCTL_SCSI_MINIPORT Serial %s %s .\n", serial_number, model_number);
+                 
+                Fill(info->sSerialNumber);
+                Fill(info->sModelNumber);
+            }
+            else
+                printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n", miniport_query->ControlCode);
+        }
+
+        if (IoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
+        {
+            DISK_GEOMETRY* pdg = (DISK_GEOMETRY*)OutputBuffer;
+            if (bRet_)
+            {
+                ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
+                    (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
+                printf("IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64u MediaType %hhx\n", pdg->Cylinders, DiskSize, pdg->MediaType);
+            }
+        }
+
+        if (IoControlCode == SMART_RCV_DRIVE_DATA)  //0x07C088
+        {
+            SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)InputBuffer;
+            SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)OutputBuffer;
+
+            printfdbg("SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n", cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
+
+            Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize); 
+        }
+
+        return bRet_;
+    }
+
+    return _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
 }
 
 typedef NTSTATUS(NTAPI* ZwCreateProcessEx_t)(OUT PHANDLE ProcessHandle, IN ACCESS_MASK DesiredAccess, IN POBJECT_ATTRIBUTES ObjectAttributes OPTIONAL, IN HANDLE ParentProcess, IN ULONG Flags, IN HANDLE SectionHandle OPTIONAL, IN HANDLE DebugPort OPTIONAL, IN HANDLE ExceptionPort OPTIONAL, IN BOOLEAN InJob);
@@ -456,77 +547,6 @@ NTSTATUS __stdcall hkNtLdrInitializeThunk(PCONTEXT NormalContext, DWORD Unknown2
     return _NtLdrInitializeThunk(NormalContext, Unknown2, Unknown3);
 }
 
-typedef NTSTATUS(NTAPI* NtDeviceIoControlFile_t) (HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
-NtDeviceIoControlFile_t _NtDeviceIoControlFile = (NtDeviceIoControlFile_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtDeviceIoControlFile");
-NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock,
-    ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength)
-{
-    if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) {
-        //printfdbg("_NtDeviceIoControlFile %x CC %x OB %x | %x\n", FileHandle, IoControlCode, OutputBuffer, GetCurrentThreadId());
-
-        auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-
-        if (IoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //0x2d1400
-        {
-            STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)OutputBuffer;
-            char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x5A);
-
-            Fill(pSerialNum);
-            printfdbg("NtDeviceIoControlFile H:%x IOCTL_STORAGE_QUERY_PROPERTY (%x) %s \n",
-                FileHandle, tpStorageDeviceDescripter, pSerialNum);
-
-        }
-
-        if (IoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
-        {
-            auto miniport_query = reinterpret_cast<SRB_IO_CONTROL*>(OutputBuffer);
-
-            if (miniport_query->ControlCode == 0x1B0501) //IOCTL_SCSI_MINIPORT_IDENTIFY
-            {
-                const auto params = reinterpret_cast<SENDCMDOUTPARAMS*>(reinterpret_cast<uint64_t>(OutputBuffer) + static_cast<uint64_t>(sizeof(SRB_IO_CONTROL)));
-                const auto info = reinterpret_cast<IDINFO*>(params->bBuffer);
-                const auto serial_number = reinterpret_cast<uint8_t*>(info->sSerialNumber);
-                const auto model_number = reinterpret_cast<uint8_t*>(info->sModelNumber);
-
-                Fill(info->sSerialNumber);
-                Fill(info->sModelNumber);
-
-                printfdbg("DeviceIoControl H:%x IOCTL_SCSI_MINIPORT Serial %s %s .\n",
-                    FileHandle, serial_number, model_number);
-            }
-            // else {}
-        }
-
-        if (IoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
-        {
-            DISK_GEOMETRY* pdg = (DISK_GEOMETRY*)OutputBuffer;
-            if (bRet_)
-            {
-                ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
-                    (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
-                printf("NtDeviceIoControlFile H:%x IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64d MediaType %x\n",
-                    FileHandle, pdg->Cylinders, DiskSize, pdg->MediaType);
-            }
-        }
-
-        if (IoControlCode == SMART_RCV_DRIVE_DATA)  //0x07C088
-        {
-            SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)InputBuffer;
-            SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)OutputBuffer;
-
-            Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
-
-            printfdbg("_NtDeviceIoControlFile H:%x SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n",
-                FileHandle, cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
-        }
-
-        return bRet_;
-    }
-
-    return _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-}
-
-
 typedef NTSTATUS(NTAPI* ZwCreateFile_t)(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength);
 ZwCreateFile_t _NtCreateFile = (ZwCreateFile_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtCreateFile");
 NTSTATUS __stdcall hkCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, POBJECT_ATTRIBUTES ObjectAttributes, PIO_STATUS_BLOCK IoStatusBlock, PLARGE_INTEGER AllocationSize, ULONG FileAttributes, ULONG ShareAccess, ULONG CreateDisposition, ULONG CreateOptions, PVOID EaBuffer, ULONG EaLength)
@@ -542,6 +562,17 @@ NTSTATUS __stdcall hkCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
     }
 
     return _NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+}
+
+typedef NTSTATUS(NTAPI* NtClose_t) (HANDLE Handle);
+NtClose_t _NtClose = (NtClose_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtClose");
+NTSTATUS __stdcall hkNtClose(HANDLE Handle)
+{
+    if (auto pos = std::find(handleslist.begin(), handleslist.end(), Handle) != handleslist.end()) {
+        //printfdbg("Handle closed -> %x\n", Handle);  
+        handleslist.erase(std::remove(handleslist.begin(), handleslist.end(), Handle), handleslist.end()); 
+    }
+    return _NtClose(Handle);
 }
 
 DWORD WINAPI InitFunc() {
@@ -562,6 +593,7 @@ DWORD WINAPI InitFunc() {
     printfdbg("NtLdrUnloadDll %x\n", NtLdrUnloadDll);
     printfdbg("_NtLdrInitializeThunk %x\n", _NtLdrInitializeThunk);
     printfdbg("_NtCreateFile %x\n", _NtCreateFile);
+    printfdbg("_NtClose %x\n", _NtClose);
 
     printfdbg("=========================\n");
 
@@ -580,6 +612,7 @@ DWORD WINAPI InitFunc() {
         DetourFunctionWithTrampoline((PBYTE)DeviceIoControl_t, (PBYTE)pDeviceIoControl);
         _NtDeviceIoControlFile = (NtDeviceIoControlFile_t)DetourFunction((PBYTE)_NtDeviceIoControlFile, (PBYTE)hkNtDeviceIoControlFile);
         _NtCreateFile = (ZwCreateFile_t)DetourFunction((PBYTE)_NtCreateFile, (PBYTE)hkCreateFile);
+        _NtClose = (NtClose_t)DetourFunction((PBYTE)_NtClose, (PBYTE)hkNtClose);
         //_NtLdrInitializeThunk = (ZwLdrInitializeThunk_t)DetourFunction((PBYTE)_NtLdrInitializeThunk, (PBYTE)hkNtLdrInitializeThunk);
     }
 
@@ -605,6 +638,7 @@ DWORD WINAPI InitFunc() {
         DetourRemove((PBYTE)DeviceIoControl_t, (PBYTE)pDeviceIoControl);
         DetourRemove(reinterpret_cast<BYTE*>(_NtDeviceIoControlFile), reinterpret_cast<BYTE*>(hkNtDeviceIoControlFile));
         DetourRemove(reinterpret_cast<BYTE*>(_NtCreateFile), reinterpret_cast<BYTE*>(hkCreateFile));
+        DetourRemove(reinterpret_cast<BYTE*>(_NtClose), reinterpret_cast<BYTE*>(hkNtClose));
     }
 
     Sleep(100);
@@ -631,7 +665,7 @@ extern "C" __declspec(dllexport) int InitFn(pass_args * argumento)
 
 BOOL APIENTRY DllMain(HMODULE hModule,
     DWORD  ul_reason_for_call,
-    LPVOID lpReserved 
+    LPVOID lpReserved
 )
 {
     switch (ul_reason_for_call)
