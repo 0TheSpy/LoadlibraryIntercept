@@ -116,7 +116,7 @@ bool isQueryHooked = false;
 typedef int(__stdcall* myFunction)(int a1, int a2, int a3, int a4, int a5, int a6, int a7);
 myFunction mFunc;
 
-const wchar_t fakeQuery[] = L"SELECT NONE FROM NONE\0";
+const wchar_t fakeQuery[] = L"\0";
 wchar_t* strQuery;
 __declspec(naked) void hkExecQuery(int a1, int a2, int a3, int a4, int a5, int a6, int a7)
 {
@@ -126,7 +126,9 @@ __declspec(naked) void hkExecQuery(int a1, int a2, int a3, int a4, int a5, int a
     __asm pop eax
 
     printfdbg("ExecQuery %ls\n", strQuery);
-    //memcpy(strQuery, fakeQuery, sizeof(fakeQuery));
+    
+    if (wcsstr(strQuery, L"Win32_DiskDrive")) 
+        memcpy(strQuery, fakeQuery, sizeof(fakeQuery));
 
     __asm jmp mFunc
 }
@@ -373,9 +375,9 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
         printfdbg("DeviceIoControl H:%x %ls ControlCode %x Output %x\n", hDevice, GetHandleTypeName(hDevice), dwIoControlCode, lpOutBuffer); 
         //return false; 
         bool bRet = DeviceIoControl_t(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned, lpOverlapped);
-
-        if (dwIoControlCode == IOCTL_ATA_PASS_THROUGH)  //0x4D02C
-        {
+           
+        if (dwIoControlCode == IOCTL_ATA_PASS_THROUGH)  //0x4D02C  ATA_PASS_THROUGH_EX 
+        { 
             char* pSerialNum = (char*)((DWORD)lpOutBuffer + 0x40);
             printfdbg("IOCTL_ATA_PASS_THROUGH Serial %s\n", pSerialNum);
             Fill(pSerialNum);
@@ -397,10 +399,8 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
                 Fill(info->sSerialNumber);
                 Fill(info->sModelNumber);
             }
-            else 
-            {
-                printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n", miniport_query->ControlCode);
-            }
+            else  
+                printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n", miniport_query->ControlCode); 
         }
 
         if (dwIoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
@@ -446,7 +446,7 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
                 LPSTR Serial = tpStorageDeviceDescripter->SerialNumberOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->SerialNumberOffset : NULL;
                 LPSTR Revision = tpStorageDeviceDescripter->ProductRevisionOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->ProductRevisionOffset : NULL;
 
-                printfdbg("IOCTL_STORAGE_QUERY_PROPERTY (%x) %s \n", tpStorageDeviceDescripter, Serial);
+                printfdbg("IOCTL_STORAGE_QUERY_PROPERTY %s \n", tpStorageDeviceDescripter, Serial);
 
                 if (ProductId) Fill(ProductId);
                 if (VendorId)  Fill(VendorId);
@@ -473,14 +473,14 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
         printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n", FileHandle, GetHandleTypeName(FileHandle), IoControlCode, OutputBuffer);
          
         auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
-         
+          
         if (IoControlCode == IOCTL_ATA_PASS_THROUGH)  //0x4D02C
         {
             char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x40); 
             printfdbg("IOCTL_ATA_PASS_THROUGH Serial %s\n", pSerialNum); 
             Fill(pSerialNum);  
         }
-
+          
         if (IoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //0x2d1400
         {
             //STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)OutputBuffer;
