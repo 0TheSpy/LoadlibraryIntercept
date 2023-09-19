@@ -464,7 +464,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
     if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) 
     {
         printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n",FileHandle,GetHandleTypeName(FileHandle), IoControlCode, OutputBuffer); 
-        return false;
+        //return false;
 
         auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
          
