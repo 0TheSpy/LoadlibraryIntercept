@@ -118,7 +118,7 @@ myFunction mFunc;
 
 const wchar_t fakeQuery[] = L"SELECT NONE FROM NONE\0";
 wchar_t* strQuery;
-__declspec(naked) void HookedFunction(int a1, int a2, int a3, int a4, int a5, int a6, int a7)
+__declspec(naked) void hkExecQuery(int a1, int a2, int a3, int a4, int a5, int a6, int a7)
 {
     __asm push eax
     __asm mov eax, [esp + 0x10]
@@ -164,7 +164,7 @@ NTSTATUS __stdcall hkLdrLoadDll(UINT32 Flags, PUINT32 Reserved, PUNICODE_STRING 
     {
         if (isQueryHooked == false) {
             isQueryHooked = true;
-            mFunc = (myFunction)DetourFunction((PBYTE)((DWORD)GetModuleHandleW(DllName->Buffer) + 0xC7E0), (PBYTE)HookedFunction);
+            mFunc = (myFunction)DetourFunction((PBYTE)((DWORD)GetModuleHandleW(DllName->Buffer) + 0xC7E0), (PBYTE)hkExecQuery);
             printfdbg("F A S T P R O X hooked\n");
         }
     }
@@ -367,18 +367,12 @@ wchar_t* GetHandleTypeName(HANDLE hHandle)
 }
 
 bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
-{
-    bool bRet = DeviceIoControl_t(hDevice,
-        dwIoControlCode,
-        lpInBuffer,
-        nInBufferSize,
-        lpOutBuffer,
-        nOutBufferSize,
-        lpBytesReturned,
-        lpOverlapped);
-
-    if (std::find(handleslist.begin(), handleslist.end(), hDevice) != handleslist.end()) { 
-        printfdbg("DeviceIoControl H:%x %ls ControlCode %x Output %x\n", hDevice, GetHandleTypeName(hDevice), dwIoControlCode, lpOutBuffer);
+{ 
+    if (std::find(handleslist.begin(), handleslist.end(), hDevice) != handleslist.end()) 
+    { 
+        printfdbg("DeviceIoControl H:%x %ls ControlCode %x Output %x\n", hDevice, GetHandleTypeName(hDevice), dwIoControlCode, lpOutBuffer); 
+        //return false; 
+        bool bRet = DeviceIoControl_t(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned, lpOverlapped);
 
         if (dwIoControlCode == IOCTL_SCSI_MINIPORT)  //0x4d008
         {
@@ -391,8 +385,7 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
                 const auto serial_number = reinterpret_cast<uint8_t*>(info->sSerialNumber);
                 const auto model_number = reinterpret_cast<uint8_t*>(info->sModelNumber);
 
-                printfdbg("IOCTL_SCSI_MINIPORT Serial %s %s .\n",
-                    serial_number, model_number);
+                printfdbg("IOCTL_SCSI_MINIPORT Serial %s %s .\n", serial_number, model_number);
 
                 Fill(info->sSerialNumber);
                 Fill(info->sModelNumber);
@@ -429,8 +422,7 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
             SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
             SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
 
-            printfdbg("SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n",
-                cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
+            printfdbg("SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n", cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
 
             Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
         }
@@ -461,16 +453,18 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
         }
     }
 
-    return bRet;
+    return DeviceIoControl_t(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned, lpOverlapped);
 }
 
 typedef NTSTATUS(NTAPI* NtDeviceIoControlFile_t) (HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
 NtDeviceIoControlFile_t _NtDeviceIoControlFile = (NtDeviceIoControlFile_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtDeviceIoControlFile");
 NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock,
     ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength)
-{
-    if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) {
+{ 
+    if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) 
+    {
         printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n",FileHandle,GetHandleTypeName(FileHandle), IoControlCode, OutputBuffer); 
+        return false;
 
         auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
          
@@ -501,7 +495,12 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
                 Fill(info->sModelNumber);
             }
             else
-                printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n", miniport_query->ControlCode);
+                if (miniport_query->ControlCode == 0x1B0502) //IOCTL_SCSI_MINIPORT_READ_SMART_ATTRIBS
+                {  
+                    printfdbg("IOCTL_SCSI_MINIPORT IOCTL_SCSI_MINIPORT_READ_SMART_ATTRIBS\n"); 
+                }
+                else
+                    printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n", miniport_query->ControlCode);
         }
 
         if (IoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
@@ -553,6 +552,7 @@ NTSTATUS __stdcall hkCreateFile(PHANDLE FileHandle, ACCESS_MASK DesiredAccess, P
 {
     if (wcsstr(ObjectAttributes->ObjectName->Buffer, L"\\PhysicalDrive") || wcsstr(ObjectAttributes->ObjectName->Buffer, L"\\Scsi"))
     {
+        //return false; 
         auto ret = _NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
         if (*(DWORD*)FileHandle) {
             handleslist.push_back((HANDLE)(*(DWORD*)FileHandle));
