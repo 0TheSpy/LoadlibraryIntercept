@@ -429,7 +429,7 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
             SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
             SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
 
-            printfdbg("SMART_RCV_DRIVE_DATA %d (%x) SERIAL %s\n", cmdIn->cBufferSize, lpAttrHdr->bBuffer, (char*)(lpAttrHdr->bBuffer + 20));
+            printfdbg("SMART_RCV_DRIVE_DATA sz %d Serial %s\n", cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20));
 
             Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
         }
@@ -530,7 +530,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
             SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)InputBuffer;
             SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)OutputBuffer;
 
-            printfdbg("SMART_RCV_DRIVE_DATA sz %d SERIAL %s\n", cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20));
+            printfdbg("SMART_RCV_DRIVE_DATA sz %d Serial %s\n", cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20));
 
             Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize); 
         }
