@@ -12,3 +12,5 @@ OR
 -m "everymodule" (optional) - breakpoint on each LdrLoadDLL and LdrUnloadDll
 
 -e (optional) - inject into existing process
+
+-hwid (optional) - hook DeviceIoControl and NtDeviceIoControlFile stuff
