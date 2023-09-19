@@ -446,7 +446,7 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
                 LPSTR Serial = tpStorageDeviceDescripter->SerialNumberOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->SerialNumberOffset : NULL;
                 LPSTR Revision = tpStorageDeviceDescripter->ProductRevisionOffset ? reinterpret_cast<PCHAR>(tpStorageDeviceDescripter) + tpStorageDeviceDescripter->ProductRevisionOffset : NULL;
 
-                printfdbg("IOCTL_STORAGE_QUERY_PROPERTY %s \n", tpStorageDeviceDescripter, Serial);
+                printfdbg("IOCTL_STORAGE_QUERY_PROPERTY Serial %s \n", tpStorageDeviceDescripter, Serial);
 
                 if (ProductId) Fill(ProductId);
                 if (VendorId)  Fill(VendorId);
@@ -485,7 +485,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
         {
             //STORAGE_DEVICE_DESCRIPTOR* tpStorageDeviceDescripter = (PSTORAGE_DEVICE_DESCRIPTOR)OutputBuffer;
             char* pSerialNum = (char*)((DWORD)OutputBuffer + 0x5A);
-            printfdbg("IOCTL_STORAGE_QUERY_PROPERTY %s \n", pSerialNum);
+            printfdbg("IOCTL_STORAGE_QUERY_PROPERTY Serial %s \n", pSerialNum);
             Fill(pSerialNum); 
         }
          
