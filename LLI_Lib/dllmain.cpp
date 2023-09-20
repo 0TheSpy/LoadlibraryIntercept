@@ -218,10 +218,11 @@ NTSTATUS __stdcall hkCreateThreadEx(
         lpParameter, Flags, StackZeroBits, SizeOfStackCommit, SizeOfStackReserve, lpBytesBuffer);
 }
 
+int randomseed;
 static void Fill(char* Buffer, SIZE_T Length = 0) {
     if (!Length)
         Length = strlen(Buffer);
-    srand(time(0));
+    srand(randomseed);
     for (int i = 0; i < Length; i++) {
         if (Buffer[i] != '\0') {
             if (Buffer[i] > '0' && Buffer[i] <= '9') {
@@ -542,13 +543,13 @@ bool IsX64win()
 }
 
 LONG GetStringRegKey(HKEY hKey, const char strValueName[], char* strValue)
-{  
+{
     CHAR szBuffer[512];
     DWORD dwBufferSize = sizeof(szBuffer);
     ULONG nError;
     nError = RegQueryValueEx(hKey, strValueName, 0, NULL, (LPBYTE)szBuffer, &dwBufferSize);
     if (ERROR_SUCCESS == nError)
-        memcpy(strValue, szBuffer, sizeof(szBuffer)); 
+        memcpy(strValue, szBuffer, sizeof(szBuffer));
     return nError;
 }
 
@@ -560,6 +561,8 @@ DWORD WINAPI InitFunc() {
     freopen_s(&fp, "CONOUT$", "w", stdout);
     printfdbg("loadlibrary Interception\n");
 #endif 
+
+    randomseed = time(0);
 
     if (havemodule)
         printfdbg("Module %ls\n", modules);
