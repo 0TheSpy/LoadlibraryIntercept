@@ -216,9 +216,6 @@ NTSTATUS __stdcall hkCreateThreadEx(
         lpParameter, Flags, StackZeroBits, SizeOfStackCommit, SizeOfStackReserve, lpBytesBuffer);
 }
 
-DETOUR_TRAMPOLINE(bool WINAPI DeviceIoControl_t(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped),
-    DeviceIoControl);
-
 static void Fill(char* Buffer, SIZE_T Length = 0) {
     if (!Length)
         Length = strlen(Buffer);
@@ -416,7 +413,7 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
         SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
         SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
 
-        printfdbg("%s SMART_RCV_DRIVE_DATA sz %d Serial %s\n", func, cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20)); 
+        printfdbg("%s SMART_RCV_DRIVE_DATA Serial %s\n", func, (char*)(lpAttrHdr->bBuffer + 20)); 
         Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
     }
 
@@ -463,6 +460,8 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
     }
 }
 
+DETOUR_TRAMPOLINE(bool WINAPI DeviceIoControl_t(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped),
+    DeviceIoControl);
 bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
 { 
     if (std::find(handleslist.begin(), handleslist.end(), hDevice) != handleslist.end()) 
