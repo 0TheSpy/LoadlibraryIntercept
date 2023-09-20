@@ -13,4 +13,4 @@ OR
 
 -e (optional) - inject into existing process
 
--hwid (optional) - hook DeviceIoControl and NtDeviceIoControlFile stuff
+-hwid (optional) - hook NtDeviceIoControlFile and spoof SerialNumber
