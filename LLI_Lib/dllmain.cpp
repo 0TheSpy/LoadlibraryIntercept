@@ -474,13 +474,13 @@ bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInB
         if (dwIoControlCode == SMART_GET_VERSION)  //0x074080
         {
             GETVERSIONINPARAMS* gvip = (GETVERSIONINPARAMS*)lpOutBuffer;
-            printfdbg("DIC SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
+            printfdbg("DIoC SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
                 gvip->bVersion, gvip->bRevision, (unsigned)gvip->fCapabilities, gvip->bIDEDeviceMap);
 
             //return false;
         }
          
-        MakeSpoof("DIC", bRet, dwIoControlCode, lpInBuffer, lpOutBuffer);
+        MakeSpoof("DIoC", bRet, dwIoControlCode, lpInBuffer, lpOutBuffer);
 
         return bRet;
     }
@@ -499,7 +499,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
          
         auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
           
-        MakeSpoof("DICF", bRet_, IoControlCode, InputBuffer, OutputBuffer);
+        MakeSpoof("DIoCF", bRet_, IoControlCode, InputBuffer, OutputBuffer);
 
         return bRet_;
     }
