@@ -393,7 +393,9 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
             Fill(info->sSerialNumber);
             Fill(info->sModelNumber);
         }
-        else
+        else 
+            //1b0502 IOCTL_SCSI_MINIPORT_READ_SMART_ATTRIBS
+            //1b0503 IOCTL_SCSI_MINIPORT_READ_SMART_THRESHOLDS
             printfdbg("%s IOCTL_SCSI_MINIPORT ControlCode %x\n", func,miniport_query->ControlCode);
     }
 
@@ -414,8 +416,7 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
         SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
         SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
 
-        printfdbg("%s SMART_RCV_DRIVE_DATA sz %d Serial %s\n", func, cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20));
-
+        printfdbg("%s SMART_RCV_DRIVE_DATA sz %d Serial %s\n", func, cmdIn->cBufferSize, (char*)(lpAttrHdr->bBuffer + 20)); 
         Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
     }
 
@@ -458,7 +459,7 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
         }
 
         printfdbg("%s %s\n", func, op.c_str());
-        //((STORAGE_PROPERTY_QUERY*)OutputBuffer)->PropertyId = (STORAGE_PROPERTY_ID)0;// (STORAGE_PROPERTY_ID)((int)spq->PropertyId + 1);
+        //((STORAGE_PROPERTY_QUERY*)OutputBuffer)->PropertyId = (STORAGE_PROPERTY_ID)0;;
     }
 }
 
