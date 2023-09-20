@@ -382,7 +382,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
         if (dwIoControlCode == SMART_GET_VERSION)  //0x074080
         {
             GETVERSIONINPARAMS* gvip = (GETVERSIONINPARAMS*)lpOutBuffer;
-            printfdbg("DIoC SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
+            printfdbg("SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
                 gvip->bVersion, gvip->bRevision, (unsigned)gvip->fCapabilities, gvip->bIDEDeviceMap); 
             //return false;
         } 
