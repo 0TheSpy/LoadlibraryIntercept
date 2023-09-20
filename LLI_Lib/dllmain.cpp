@@ -576,26 +576,29 @@ DWORD WINAPI InitFunc() {
     printfdbg("NtClose %x\n", _NtClose);
     printfdbg("=========================\n");
 
-    HKEY key; REGSAM flag;
-    if (IsX64win())  flag = KEY_WOW64_64KEY;  else  flag = KEY_WOW64_32KEY;
-    const char* loc = TEXT("HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0");
-    LONG ret = ::RegOpenKeyEx(HKEY_LOCAL_MACHINE, loc, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_SET_VALUE | flag, &key); 
-    if (ret == ERROR_SUCCESS)
+    if (hwidspoof) 
     {
-        char strSerialNum[512];
-        GetStringRegKey(key, "SerialNumber", (char*)&strSerialNum);
-        printfdbg("Logical Unit Id 0 Serial %s\n", strSerialNum);
-        Fill(strSerialNum); 
-        char* arr_ptr = &strSerialNum[0];
-        RegSetValueExA(key, "SerialNumber", 0, REG_SZ, (LPCBYTE)strSerialNum, strlen(arr_ptr));
-    } 
+        HKEY key; REGSAM flag;
+        if (IsX64win())  flag = KEY_WOW64_64KEY;  else  flag = KEY_WOW64_32KEY;
+        const char* loc = TEXT("HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0");
+        LONG ret = ::RegOpenKeyEx(HKEY_LOCAL_MACHINE, loc, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_SET_VALUE | flag, &key);
+        if (ret == ERROR_SUCCESS)
+        {
+            char strSerialNum[512];
+            GetStringRegKey(key, "SerialNumber", (char*)&strSerialNum);
+            printfdbg("Logical Unit Id 0 Serial %s\n", strSerialNum);
+            Fill(strSerialNum);
+            char* arr_ptr = &strSerialNum[0];
+            RegSetValueExA(key, "SerialNumber", 0, REG_SZ, (LPCBYTE)strSerialNum, strlen(arr_ptr));
+        }
 
-    vector<int> sig = { 0xB8,0x07,0x00,0x1B,0x00,0xE9 };
-    DWORD Entry = GetAddressFromSignature(sig, 0x0, 0x10000000);
-    printfdbg("removeIoHook %x\n", Entry);
-    if (Entry) {
-        *(DWORD*)(Entry + 0x6) -= 0x5;
-    };
+        vector<int> sig = { 0xB8,0x07,0x00,0x1B,0x00,0xE9 };
+        DWORD Entry = GetAddressFromSignature(sig, 0x0, 0x10000000);
+        printfdbg("removeIoHook %x\n", Entry);
+        if (Entry) {
+            *(DWORD*)(Entry + 0x6) -= 0x5;
+        };
+    }
 
     NtLdrLoadDll = (pLdrLoadDll)DetourFunction((PBYTE)NtLdrLoadDll, (PBYTE)hkLdrLoadDll);
     _NtCreateThreadEx = (ZwCreateThreadEx_t)DetourFunction((PBYTE)_NtCreateThreadEx, (PBYTE)hkCreateThreadEx);
