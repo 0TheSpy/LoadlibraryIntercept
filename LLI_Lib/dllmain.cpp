@@ -351,6 +351,11 @@ typedef struct _IDINFO
     USHORT    wReserved89[167];
 } IDINFO, * PIDINFO;
 
+typedef struct _OBJECT_NAME_INFORMATION
+{
+    UNICODE_STRING	Name;
+} OBJECT_NAME_INFORMATION, * POBJECT_NAME_INFORMATION;
+
 wchar_t* GetHandleTypeName(HANDLE hHandle)
 {
     typedef NTSTATUS(NTAPI* NtQueryObjectPtr)(
@@ -367,8 +372,8 @@ wchar_t* GetHandleTypeName(HANDLE hHandle)
     std::vector<BYTE> buffer(OutSize);
     PVOID TypeInfo = &buffer[0];
     ULONG InSize = OutSize;
-    NtStatus = QueryObj(hHandle, OBJECT_INFORMATION_CLASS(1), TypeInfo, InSize, &OutSize);
-    return (wchar_t*)((DWORD)TypeInfo + 0x8);
+    NtStatus = QueryObj(hHandle, OBJECT_INFORMATION_CLASS(1), TypeInfo, InSize, &OutSize); //ObjectNameInformation 
+    return ((POBJECT_NAME_INFORMATION)TypeInfo)->Name.Buffer; 
 }
 
 typedef NTSTATUS(NTAPI* NtDeviceIoControlFile_t) (HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
