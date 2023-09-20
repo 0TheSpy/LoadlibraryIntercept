@@ -536,6 +536,24 @@ NTSTATUS __stdcall hkNtClose(HANDLE Handle)
     }
     return _NtClose(Handle);
 }
+  
+bool IsX64win()
+{
+    UINT x64test = GetSystemWow64DirectoryA(NULL, 0);
+    if (GetLastError() == ERROR_CALL_NOT_IMPLEMENTED)  return FALSE;
+    else return TRUE;
+}
+
+LONG GetStringRegKey(HKEY hKey, const char strValueName[], char* strValue)
+{  
+    CHAR szBuffer[512];
+    DWORD dwBufferSize = sizeof(szBuffer);
+    ULONG nError;
+    nError = RegQueryValueEx(hKey, strValueName, 0, NULL, (LPBYTE)szBuffer, &dwBufferSize);
+    if (ERROR_SUCCESS == nError)
+        memcpy(strValue, szBuffer, sizeof(szBuffer)); 
+    return nError;
+}
 
 DWORD WINAPI InitFunc() {
 
@@ -556,8 +574,21 @@ DWORD WINAPI InitFunc() {
     printfdbg("NtLdrInitializeThunk %x\n", _NtLdrInitializeThunk);
     printfdbg("NtCreateFile %x\n", _NtCreateFile);
     printfdbg("NtClose %x\n", _NtClose);
-
     printfdbg("=========================\n");
+
+    HKEY key; REGSAM flag;
+    if (IsX64win())  flag = KEY_WOW64_64KEY;  else  flag = KEY_WOW64_32KEY;
+    const char* loc = TEXT("HARDWARE\\DEVICEMAP\\Scsi\\Scsi Port 0\\Scsi Bus 0\\Target Id 0\\Logical Unit Id 0");
+    LONG ret = ::RegOpenKeyEx(HKEY_LOCAL_MACHINE, loc, 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | KEY_SET_VALUE | flag, &key); 
+    if (ret == ERROR_SUCCESS)
+    {
+        char strSerialNum[512];
+        GetStringRegKey(key, "SerialNumber", (char*)&strSerialNum);
+        printfdbg("Logical Unit Id 0 Serial %s\n", strSerialNum);
+        Fill(strSerialNum); 
+        char* arr_ptr = &strSerialNum[0];
+        RegSetValueExA(key, "SerialNumber", 0, REG_SZ, (LPCBYTE)strSerialNum, strlen(arr_ptr));
+    } 
 
     vector<int> sig = { 0xB8,0x07,0x00,0x1B,0x00,0xE9 };
     DWORD Entry = GetAddressFromSignature(sig, 0x0, 0x10000000);
