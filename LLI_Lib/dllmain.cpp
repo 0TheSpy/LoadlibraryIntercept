@@ -169,8 +169,11 @@ NTSTATUS __stdcall hkLdrLoadDll(UINT32 Flags, PUINT32 Reserved, PUNICODE_STRING 
     {
         if (isQueryHooked == false) {
             isQueryHooked = true;
-            mFunc = (myFunction)DetourFunction((PBYTE)((DWORD)GetModuleHandleW(DllName->Buffer) + 0xC7E0), (PBYTE)hkExecQuery);
-            printfdbg("fastprox.dll hooked\n");
+
+            DWORD pExecQuery = 0x160 + (DWORD)GetProcAddress(GetModuleHandleW(DllName->Buffer), "?CreateLimitedRepresentation@CInstancePart@@QAEPAEPAVCLimitationMapping@@HPAE@Z");
+            mFunc = (myFunction)DetourFunction((PBYTE)(pExecQuery), 
+                (PBYTE)hkExecQuery);
+            printfdbg("fastprox.dll hooked! ExecQuery: %x\n", pExecQuery);
         }
     }
 
