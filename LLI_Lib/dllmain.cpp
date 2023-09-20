@@ -171,8 +171,7 @@ NTSTATUS __stdcall hkLdrLoadDll(UINT32 Flags, PUINT32 Reserved, PUNICODE_STRING 
             isQueryHooked = true;
 
             DWORD pExecQuery = 0x160 + (DWORD)GetProcAddress(GetModuleHandleW(DllName->Buffer), "?CreateLimitedRepresentation@CInstancePart@@QAEPAEPAVCLimitationMapping@@HPAE@Z");
-            mFunc = (myFunction)DetourFunction((PBYTE)(pExecQuery), 
-                (PBYTE)hkExecQuery);
+            mFunc = (myFunction)DetourFunction((PBYTE)(pExecQuery), (PBYTE)hkExecQuery);
             printfdbg("fastprox.dll hooked! ExecQuery: %x\n", pExecQuery);
         }
     }
@@ -445,7 +444,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
             Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
         }
 
-        if (dwIoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //2d1400
+        if (dwIoControlCode == IOCTL_STORAGE_QUERY_PROPERTY)  //0x2d1400
         {
             string op = "IOCTL_STORAGE_QUERY_PROPERTY";
 
