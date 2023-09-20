@@ -365,12 +365,12 @@ wchar_t* GetHandleTypeName(HANDLE hHandle)
     return (wchar_t*)((DWORD)TypeInfo + 0x8);
 }
 
-void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInBuffer, LPVOID lpOutBuffer)
+void MakeSpoof(bool bRet, DWORD dwIoControlCode, LPVOID lpInBuffer, LPVOID lpOutBuffer)
 {
     if (dwIoControlCode == IOCTL_ATA_PASS_THROUGH)  //0x4D02C  ATA_PASS_THROUGH_EX 
     {
         char* pSerialNum = (char*)((DWORD)lpOutBuffer + 0x40);
-        printfdbg("%s IOCTL_ATA_PASS_THROUGH Serial %s\n", func, pSerialNum);
+        printfdbg("IOCTL_ATA_PASS_THROUGH Serial %s\n", pSerialNum);
         Fill(pSerialNum);
     }
 
@@ -385,7 +385,7 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
             const auto serial_number = reinterpret_cast<uint8_t*>(info->sSerialNumber);
             const auto model_number = reinterpret_cast<uint8_t*>(info->sModelNumber);
 
-            printfdbg("%s IOCTL_SCSI_MINIPORT Serial %s %s .\n", func, serial_number, model_number);
+            printfdbg("IOCTL_SCSI_MINIPORT Serial %s %s .\n", serial_number, model_number);
 
             Fill(info->sSerialNumber);
             Fill(info->sModelNumber);
@@ -393,7 +393,7 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
         else 
             //1b0502 IOCTL_SCSI_MINIPORT_READ_SMART_ATTRIBS
             //1b0503 IOCTL_SCSI_MINIPORT_READ_SMART_THRESHOLDS
-            printfdbg("%s IOCTL_SCSI_MINIPORT ControlCode %x\n", func,miniport_query->ControlCode);
+            printfdbg("IOCTL_SCSI_MINIPORT ControlCode %x\n",miniport_query->ControlCode);
     }
 
     if (dwIoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
@@ -403,8 +403,8 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
         {
             ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
                 (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
-            printf("%s IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64u MediaType %hhx\n",
-                func, pdg->Cylinders, DiskSize, pdg->MediaType);
+            printf("IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64u MediaType %hhx\n",
+                pdg->Cylinders, DiskSize, pdg->MediaType);
         }
     }
      
@@ -413,7 +413,7 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
         SENDCMDINPARAMS* cmdIn = (SENDCMDINPARAMS*)lpInBuffer;
         SENDCMDOUTPARAMS* lpAttrHdr = (SENDCMDOUTPARAMS*)lpOutBuffer;
 
-        printfdbg("%s SMART_RCV_DRIVE_DATA Serial %s\n", func, (char*)(lpAttrHdr->bBuffer + 20)); 
+        printfdbg("SMART_RCV_DRIVE_DATA Serial %s\n", (char*)(lpAttrHdr->bBuffer + 20)); 
         Fill((char*)lpAttrHdr->bBuffer, lpAttrHdr->cBufferSize);
     }
 
@@ -455,36 +455,9 @@ void MakeSpoof(const char func[], bool bRet, DWORD dwIoControlCode, LPVOID lpInB
             Fill(Serial);
         }
 
-        printfdbg("%s %s\n", func, op.c_str());
+        printfdbg("%s\n", op.c_str());
         //((STORAGE_PROPERTY_QUERY*)OutputBuffer)->PropertyId = (STORAGE_PROPERTY_ID)0;;
     }
-}
-
-DETOUR_TRAMPOLINE(bool WINAPI DeviceIoControl_t(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped),
-    DeviceIoControl);
-bool WINAPI pDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer, DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize, LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
-{ 
-    if (std::find(handleslist.begin(), handleslist.end(), hDevice) != handleslist.end()) 
-    { 
-        printfdbg("DeviceIoControl H:%x %ls ControlCode %x Output %x\n", hDevice, GetHandleTypeName(hDevice), dwIoControlCode, lpOutBuffer); 
-        //return false; 
-        bool bRet = DeviceIoControl_t(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned, lpOverlapped);
-            
-        if (dwIoControlCode == SMART_GET_VERSION)  //0x074080
-        {
-            GETVERSIONINPARAMS* gvip = (GETVERSIONINPARAMS*)lpOutBuffer;
-            printfdbg("DIoC SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
-                gvip->bVersion, gvip->bRevision, (unsigned)gvip->fCapabilities, gvip->bIDEDeviceMap);
-
-            //return false;
-        }
-         
-        MakeSpoof("DIoC", bRet, dwIoControlCode, lpInBuffer, lpOutBuffer);
-
-        return bRet;
-    }
-
-    return DeviceIoControl_t(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer, nOutBufferSize, lpBytesReturned, lpOverlapped);
 }
 
 typedef NTSTATUS(NTAPI* NtDeviceIoControlFile_t) (HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
@@ -498,8 +471,14 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
          
         auto bRet_ = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, IoControlCode, InputBuffer, InputBufferLength, OutputBuffer, OutputBufferLength);
           
-        MakeSpoof("DIoCF", bRet_, IoControlCode, InputBuffer, OutputBuffer);
-
+        if (IoControlCode == SMART_GET_VERSION)  //0x074080
+        {
+            GETVERSIONINPARAMS* gvip = (GETVERSIONINPARAMS*)OutputBuffer;
+            printfdbg("DIoC SMART_GET_VERSION Version %d.%d Caps 0x%x DevMap 0x%02x\n",
+                gvip->bVersion, gvip->bRevision, (unsigned)gvip->fCapabilities, gvip->bIDEDeviceMap); 
+            //return false;
+        } 
+        MakeSpoof(bRet_, IoControlCode, InputBuffer, OutputBuffer); 
         return bRet_;
     }
 
@@ -565,11 +544,11 @@ DWORD WINAPI InitFunc() {
 
     printfdbg("NtLdrLoadDll %x\n", NtLdrLoadDll);
     printfdbg("NtCreateThreadEx %x\n", _NtCreateThreadEx);
-    printfdbg("DeviceIoControl %x\n", DeviceIoControl);
+    printfdbg("NtDeviceIoControlFile %x\n", _NtDeviceIoControlFile);
     printfdbg("NtLdrUnloadDll %x\n", NtLdrUnloadDll);
-    printfdbg("_NtLdrInitializeThunk %x\n", _NtLdrInitializeThunk);
-    printfdbg("_NtCreateFile %x\n", _NtCreateFile);
-    printfdbg("_NtClose %x\n", _NtClose);
+    printfdbg("NtLdrInitializeThunk %x\n", _NtLdrInitializeThunk);
+    printfdbg("NtCreateFile %x\n", _NtCreateFile);
+    printfdbg("NtClose %x\n", _NtClose);
 
     printfdbg("=========================\n");
 
@@ -584,8 +563,7 @@ DWORD WINAPI InitFunc() {
     _NtCreateThreadEx = (ZwCreateThreadEx_t)DetourFunction((PBYTE)_NtCreateThreadEx, (PBYTE)hkCreateThreadEx);
     NtLdrUnloadDll = (pLdrUnloadDll)DetourFunction((PBYTE)NtLdrUnloadDll, (PBYTE)hkLdrUnloadDll);
 
-    if (hwidspoof) {
-        DetourFunctionWithTrampoline((PBYTE)DeviceIoControl_t, (PBYTE)pDeviceIoControl);
+    if (hwidspoof) { 
         _NtDeviceIoControlFile = (NtDeviceIoControlFile_t)DetourFunction((PBYTE)_NtDeviceIoControlFile, (PBYTE)hkNtDeviceIoControlFile);
         _NtCreateFile = (ZwCreateFile_t)DetourFunction((PBYTE)_NtCreateFile, (PBYTE)hkCreateFile);
         _NtClose = (NtClose_t)DetourFunction((PBYTE)_NtClose, (PBYTE)hkNtClose);
@@ -610,8 +588,7 @@ DWORD WINAPI InitFunc() {
     DetourRemove(reinterpret_cast<BYTE*>(_NtCreateThreadEx), reinterpret_cast<BYTE*>(hkCreateThreadEx));
     DetourRemove(reinterpret_cast<BYTE*>(NtLdrUnloadDll), reinterpret_cast<BYTE*>(hkLdrUnloadDll));
 
-    if (hwidspoof) {
-        DetourRemove((PBYTE)DeviceIoControl_t, (PBYTE)pDeviceIoControl);
+    if (hwidspoof) { 
         DetourRemove(reinterpret_cast<BYTE*>(_NtDeviceIoControlFile), reinterpret_cast<BYTE*>(hkNtDeviceIoControlFile));
         DetourRemove(reinterpret_cast<BYTE*>(_NtCreateFile), reinterpret_cast<BYTE*>(hkCreateFile));
         DetourRemove(reinterpret_cast<BYTE*>(_NtClose), reinterpret_cast<BYTE*>(hkNtClose));
