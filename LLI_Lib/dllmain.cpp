@@ -127,7 +127,7 @@ __declspec(naked) void hkExecQuery(int a1, int a2, int a3, int a4, int a5, int a
 
     printfdbg("ExecQuery %ls\n", strQuery);
      
-    if (wcsstr(strQuery, L"Win32_DiskDrive") || wcsstr(strQuery, L"Win32_SCSIController") || wcsstr(strQuery, L"Win32_IDEControllerDevice"))
+    if (wcsstr(strQuery, L"Win32_DiskDrive") || wcsstr(strQuery, L"Win32_SCSIController") || wcsstr(strQuery, L"Win32_IDEController"))
         memcpy(strQuery, fakeQuery, sizeof(fakeQuery));
 
     __asm jmp mFunc
