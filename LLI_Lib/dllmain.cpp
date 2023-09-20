@@ -29,9 +29,6 @@ struct pass_args
     bool havemodule = false;
     bool hwidspoof = false;
     wchar_t modules[MAX_PATH];
-#ifdef HWID
-    DWORD targethwid;
-#endif 
 };
 bool havemodule = false;
 bool hwidspoof = false;
