@@ -612,6 +612,36 @@ NTSTATUS __stdcall hkNtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
             GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer, bRet);  
     return bRet; 
 }
+ 
+typedef enum _HARDERROR_RESPONSE {
+    ResponseReturnToCaller,
+    ResponseNotHandled,
+    ResponseAbort,
+    ResponseCancel,
+    ResponseIgnore,
+    ResponseNo,
+    ResponseOk,
+    ResponseRetry,
+    ResponseYes
+} HARDERROR_RESPONSE, * PHARDERROR_RESPONSE;
+typedef enum _HARDERROR_RESPONSE_OPTION {
+    OptionAbortRetryIgnore,
+    OptionOk,
+    OptionOkCancel,
+    OptionRetryCancel,
+    OptionYesNo,
+    OptionYesNoCancel,
+    OptionShutdownSystem
+} HARDERROR_RESPONSE_OPTION, * PHARDERROR_RESPONSE_OPTION;
+typedef NTSTATUS(NTAPI* NtRaiseHardError_t) (NTSTATUS ErrorStatus, ULONG NumberOfParameters, PUNICODE_STRING UnicodeStringParameterMask, PVOID* Parameters, HARDERROR_RESPONSE_OPTION ResponseOption, PHARDERROR_RESPONSE Response);
+NtRaiseHardError_t _NtRaiseHardError = (NtRaiseHardError_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtRaiseHardError");
+NTSTATUS __stdcall hkNtRaiseHardError(NTSTATUS ErrorStatus, ULONG NumberOfParameters, PUNICODE_STRING UnicodeStringParameterMask, PVOID* Parameters, HARDERROR_RESPONSE_OPTION ResponseOption, PHARDERROR_RESPONSE Response)
+{
+    printfdbg("NtRaiseHardError ErrorStatus %x ResponseOption %x\n", ErrorStatus, ResponseOption);
+    return ERROR_SUCCESS;
+    //return _NtRaiseHardError(ErrorStatus, NumberOfParameters, UnicodeStringParameterMask, Parameters, ResponseOption, Response);
+}
+
 
 DWORD WINAPI InitFunc() {
 
@@ -634,8 +664,10 @@ DWORD WINAPI InitFunc() {
     printfdbg("NtLdrInitializeThunk %x\n", _NtLdrInitializeThunk);
     printfdbg("NtCreateFile %x\n", _NtCreateFile);
     printfdbg("NtClose %x\n", _NtClose);
+    printfdbg("NtQueryValueKey %x\n", NtQueryValueKey);
+    printfdbg("NtRaiseHardError %x\n", _NtRaiseHardError);
     printfdbg("=========================\n");
-
+    
     if (hwidspoof) 
     {
         HKEY key; REGSAM flag;
@@ -659,7 +691,12 @@ DWORD WINAPI InitFunc() {
             *(DWORD*)(Entry + 0x6) -= 0x5;
         };
     }
-
+     
+    DWORD NtRaiseHardError_antihook = GetAddressFromSignature({ 0xb8,0x69,0x01,0x00,0x00,0xe9 }, 0x0, 0x10000000);
+    printfdbg("removeRHEHook %x\n", NtRaiseHardError_antihook);
+    if (NtRaiseHardError_antihook) *(DWORD*)(NtRaiseHardError_antihook + 0x6) -= 0x5;
+      
+    _NtRaiseHardError = (NtRaiseHardError_t)DetourFunction((PBYTE)_NtRaiseHardError, (PBYTE)hkNtRaiseHardError);
     NtLdrLoadDll = (pLdrLoadDll)DetourFunction((PBYTE)NtLdrLoadDll, (PBYTE)hkLdrLoadDll);
     _NtCreateThreadEx = (ZwCreateThreadEx_t)DetourFunction((PBYTE)_NtCreateThreadEx, (PBYTE)hkCreateThreadEx);
     NtLdrUnloadDll = (pLdrUnloadDll)DetourFunction((PBYTE)NtLdrUnloadDll, (PBYTE)hkLdrUnloadDll);
@@ -689,7 +726,8 @@ DWORD WINAPI InitFunc() {
 #endif
 
     Beep(600, 400);
-
+     
+    DetourRemove(reinterpret_cast<BYTE*>(_NtRaiseHardError), reinterpret_cast<BYTE*>(hkNtRaiseHardError));
     DetourRemove(reinterpret_cast<BYTE*>(NtLdrLoadDll), reinterpret_cast<BYTE*>(hkLdrLoadDll));
     DetourRemove(reinterpret_cast<BYTE*>(_NtCreateThreadEx), reinterpret_cast<BYTE*>(hkCreateThreadEx));
     DetourRemove(reinterpret_cast<BYTE*>(NtLdrUnloadDll), reinterpret_cast<BYTE*>(hkLdrUnloadDll));
