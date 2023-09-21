@@ -28,10 +28,12 @@ struct pass_args
 {
     bool havemodule = false;
     bool hwidspoof = false;
+    bool regmon = false;
     wchar_t modules[MAX_PATH];
 };
 bool havemodule = false;
 bool hwidspoof = false;
+bool regmon = false;
 bool pauseEveryModule = false;
 wchar_t modules[MAX_PATH];
 
@@ -117,10 +119,13 @@ const wchar_t fakeQuery[] = L"\0";
 wchar_t* strQuery;
 __declspec(naked) void hkExecQuery(int a1, int a2, int a3, int a4, int a5, int a6, int a7)
 {
-    __asm push eax
-    __asm mov eax, [esp + 0x10]
-        __asm mov strQuery, eax
-    __asm pop eax
+    __asm
+    {   
+        push eax
+        mov eax, [esp + 0x10]
+        mov strQuery, eax
+        pop eax
+    }
 
     printfdbg("ExecQuery %ls\n", strQuery);
      
@@ -226,7 +231,7 @@ static void Fill(char* Buffer, SIZE_T Length = 0) {
     for (int i = 0; i < Length; i++) {
         if (Buffer[i] != '\0') {
             if (Buffer[i] > '0' && Buffer[i] <= '9') {
-                Buffer[i] = (char)(0x30 + rand() % 9);
+                Buffer[i] = (char)(0x31 + rand() % 8);
             }
             if (Buffer[i] >= 'A' && Buffer[i] <= 'Z') {
                 Buffer[i] = (char)(0x41 + rand() % 25);
@@ -353,24 +358,37 @@ typedef struct _OBJECT_NAME_INFORMATION
     UNICODE_STRING	Name;
 } OBJECT_NAME_INFORMATION, * POBJECT_NAME_INFORMATION;
 
-wchar_t* GetHandleTypeName(HANDLE hHandle)
+wstring remove_non_printable_chars(std::wstring wstr)
 {
-    typedef NTSTATUS(NTAPI* NtQueryObjectPtr)(
-        HANDLE Handle,
-        OBJECT_INFORMATION_CLASS ObjectInformationClass,
-        PVOID ObjectInformation,
-        ULONG ObjectInformationLength,
-        PULONG ReturnLength);
-    HMODULE hMod = LoadLibrary(_T("NtDll.dll"));
-    NtQueryObjectPtr QueryObj = (NtQueryObjectPtr) ::GetProcAddress(hMod, "NtQueryObject");
-    assert(QueryObj);
+    // get the ctype facet for wchar_t (Unicode code points in pactice)
+    typedef std::ctype< wchar_t > ctype;
+    const ctype& ct = std::use_facet<ctype>(std::locale());
+
+    // remove non printable Unicode characters
+    wstr.erase(std::remove_if(wstr.begin(), wstr.end(),
+        [&ct](wchar_t ch) { return !ct.is(ctype::print, ch); }),
+        wstr.end());
+
+    return wstr;
+}
+ 
+typedef NTSTATUS(NTAPI* NtQueryObjectPtr)(
+    HANDLE Handle,
+    OBJECT_INFORMATION_CLASS ObjectInformationClass,
+    PVOID ObjectInformation,
+    ULONG ObjectInformationLength,
+    PULONG ReturnLength);
+NtQueryObjectPtr QueryObj = (NtQueryObjectPtr) ::GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryObject"); 
+
+wstring GetHandleTypeName(HANDLE hHandle)
+{
     ULONG OutSize = 0;
     NTSTATUS NtStatus = QueryObj(hHandle, OBJECT_INFORMATION_CLASS(1), NULL, 0, &OutSize);
     std::vector<BYTE> buffer(OutSize);
     PVOID TypeInfo = &buffer[0];
     ULONG InSize = OutSize;
     NtStatus = QueryObj(hHandle, OBJECT_INFORMATION_CLASS(1), TypeInfo, InSize, &OutSize); //ObjectNameInformation 
-    return ((POBJECT_NAME_INFORMATION)TypeInfo)->Name.Buffer; 
+    return remove_non_printable_chars(wstring(((POBJECT_NAME_INFORMATION)TypeInfo)->Name.Buffer)); 
 }
 
 typedef NTSTATUS(NTAPI* NtDeviceIoControlFile_t) (HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext, PIO_STATUS_BLOCK IoStatusBlock, ULONG IoControlCode, PVOID InputBuffer, ULONG InputBufferLength, PVOID OutputBuffer, ULONG OutputBufferLength);
@@ -380,7 +398,7 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
 { 
     if (std::find(handleslist.begin(), handleslist.end(), FileHandle) != handleslist.end()) 
     { 
-        printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n", FileHandle, GetHandleTypeName(FileHandle), dwIoControlCode, lpOutBuffer);
+        printfdbg("NtDeviceIoControlFile H:%x %ls ControlCode %x Output %x\n", FileHandle, GetHandleTypeName(FileHandle).c_str(), dwIoControlCode, lpOutBuffer);
          
         auto bRet = _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, dwIoControlCode, lpInBuffer, InputBufferLength, lpOutBuffer, OutputBufferLength);
           
@@ -553,6 +571,37 @@ LONG GetStringRegKey(HKEY hKey, const char strValueName[], char* strValue)
     return nError;
 }
 
+typedef struct _KEY_VALUE_PARTIAL_INFORMATION
+{
+    ULONG TitleIndex;	// Device and intermediate drivers should ignore this member.
+    ULONG Type;			// The system-defined type for the registry value in the 
+    // Data member (see the values above).
+    ULONG DataLength;	// The size in bytes of the Data member.
+    UCHAR Data[1];		// A value entry of the key.
+} KEY_VALUE_PARTIAL_INFORMATION;
+typedef KEY_VALUE_PARTIAL_INFORMATION* PKEY_VALUE_PARTIAL_INFORMATION;
+typedef enum _KEY_VALUE_INFORMATION_CLASS
+{
+    KeyValueBasicInformation,
+    KeyValueFullInformation,
+    KeyValuePartialInformation,
+} KEY_VALUE_INFORMATION_CLASS;
+typedef NTSTATUS(STDAPICALLTYPE NTQUERYVALUEKEY)(HANDLE KeyHandle, PUNICODE_STRING ValueName, KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass, PVOID KeyValueInformation, ULONG Length, PULONG ResultLength);
+typedef NTQUERYVALUEKEY FAR* LPNTQUERYVALUEKEY;
+LPNTQUERYVALUEKEY NtQueryValueKey = (LPNTQUERYVALUEKEY)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryValueKey");
+NTSTATUS __stdcall hkNtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName, KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass, 
+    PKEY_VALUE_PARTIAL_INFORMATION KeyValueInformation, ULONG Length, PULONG ResultLength)
+{ 
+    auto bRet = NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);  
+    if (bRet == ERROR_SUCCESS)
+        printfdbg("Key %ls/%ls: OK (%ls)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,  
+            remove_non_printable_chars(wstring((wchar_t*)KeyValueInformation->Data)).c_str()); 
+    else  
+        printfdbg("Key %ls/%ls: Error (%x)\n",
+            GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer, bRet);  
+    return bRet; 
+}
+
 DWORD WINAPI InitFunc() {
 
 #ifdef CONSOLE
@@ -608,7 +657,12 @@ DWORD WINAPI InitFunc() {
         _NtDeviceIoControlFile = (NtDeviceIoControlFile_t)DetourFunction((PBYTE)_NtDeviceIoControlFile, (PBYTE)hkNtDeviceIoControlFile);
         _NtCreateFile = (ZwCreateFile_t)DetourFunction((PBYTE)_NtCreateFile, (PBYTE)hkCreateFile);
         _NtClose = (NtClose_t)DetourFunction((PBYTE)_NtClose, (PBYTE)hkNtClose);
-        //_NtLdrInitializeThunk = (ZwLdrInitializeThunk_t)DetourFunction((PBYTE)_NtLdrInitializeThunk, (PBYTE)hkNtLdrInitializeThunk);
+        //_NtLdrInitializeThunk = (ZwLdrInitializeThunk_t)DetourFunction((PBYTE)_NtLdrInitializeThunk, (PBYTE)hkNtLdrInitializeThunk); 
+    }
+
+    if (regmon)
+    {
+        NtQueryValueKey = (LPNTQUERYVALUEKEY)DetourFunction((PBYTE)NtQueryValueKey, (PBYTE)hkNtQueryValueKey);
     }
 
     //printfdbg("SetWindowDisplayAffinity %d\n",SetWindowDisplayAffinity(GetForegroundWindow(), WDA_EXCLUDEFROMCAPTURE));
@@ -635,6 +689,11 @@ DWORD WINAPI InitFunc() {
         DetourRemove(reinterpret_cast<BYTE*>(_NtClose), reinterpret_cast<BYTE*>(hkNtClose));
     }
 
+    if (regmon)
+    {
+        DetourRemove(reinterpret_cast<BYTE*>(NtQueryValueKey), reinterpret_cast<BYTE*>(hkNtQueryValueKey)); 
+    }
+
     Sleep(100);
     FreeLibraryAndExitThread(myhModule, 0);
 
@@ -645,6 +704,7 @@ extern "C" __declspec(dllexport) int InitFn(pass_args * argumento)
 {
     havemodule = argumento->havemodule;
     hwidspoof = argumento->hwidspoof;
+    regmon = argumento->regmon;
 
     if (havemodule)
     {
