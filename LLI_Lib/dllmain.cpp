@@ -603,7 +603,7 @@ NTSTATUS __stdcall hkNtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
                 KeyValueInformation->Type, KeyValueInformation->DataLength);
             break;
         case 4:
-            printfdbg("Key %ls/%ls: %d (%x)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+            printfdbg("Key %ls/%ls: %d (%d)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
                 KeyValueInformation->Type, *(DWORD*)KeyValueInformation->Data);
             break;
         }
