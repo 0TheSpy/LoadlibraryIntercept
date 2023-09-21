@@ -442,13 +442,10 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
         if (dwIoControlCode == IOCTL_DISK_GET_DRIVE_GEOMETRY)  //0x70000
         {
             DISK_GEOMETRY* pdg = (DISK_GEOMETRY*)lpOutBuffer;
-            if (bRet)
-            {
-                ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
-                    (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
-                printf("IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64u MediaType %hhx\n",
-                    pdg->Cylinders, DiskSize, pdg->MediaType);
-            }
+            ULONGLONG DiskSize = pdg->Cylinders.QuadPart * (ULONG)pdg->TracksPerCylinder *
+                (ULONG)pdg->SectorsPerTrack * (ULONG)pdg->BytesPerSector;
+            printf("IOCTL_DISK_GET_DRIVE_GEOMETRY Cylinders %I64d Ds %I64u MediaType %hhx\n",
+                pdg->Cylinders, DiskSize, pdg->MediaType); 
         }
 
         if (dwIoControlCode == SMART_RCV_DRIVE_DATA)  //0x07C088
