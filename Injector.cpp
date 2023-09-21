@@ -5,6 +5,7 @@ struct pass_args
 { 
 	bool havemodule = false;   
 	bool hwidspoof = false;
+	bool regmon = false;
 	wchar_t modules[MAX_PATH];       
 };        
 pass_args inject_args;         
@@ -168,6 +169,11 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 		if (wcsstr(szArglist[i], L"-hwid")) {
 			printf("Spoofing HWID\n");
 			inject_args.hwidspoof = true;
+		}
+
+		if (wcsstr(szArglist[i], L"-regmon")) {
+			printf("Registry Monitoring\n");
+			inject_args.regmon = true;
 		}
 
 	} 
