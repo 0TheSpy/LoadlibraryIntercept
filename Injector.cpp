@@ -56,7 +56,7 @@ bool Inject(wchar_t procname[MAX_PATH], bool existing)
 		SI.StartupInfo.cb = sizeof(STARTUPINFOEXW);
 
 		if (!CreateProcessW(NULL, procname, NULL, NULL, NULL,
-			EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW, NULL, NULL, &SI.StartupInfo, &PI))
+			EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_NO_WINDOW | DETACHED_PROCESS, NULL, NULL, &SI.StartupInfo, &PI))
 			printfdbg("CreateProcessW error %s\n", GetLastErrorAsText());
 
 		hProcess = PI.hProcess;
