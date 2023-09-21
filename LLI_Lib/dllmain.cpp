@@ -591,9 +591,23 @@ NTSTATUS __stdcall hkNtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
 { 
     auto bRet = NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);  
     if (bRet == ERROR_SUCCESS)
-        printfdbg("Key %ls/%ls: OK (%ls)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,  
-            remove_non_printable_chars(wstring((wchar_t*)KeyValueInformation->Data)).c_str()); 
-    else  
+        switch (KeyValueInformation->Type)
+        {
+        case 1:
+        case 2:
+            printfdbg("Key %ls/%ls: %d (%ls)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+                KeyValueInformation->Type, remove_non_printable_chars(wstring((wchar_t*)KeyValueInformation->Data)).c_str());
+            break;
+        case 3:
+            printfdbg("Key %ls/%ls: %d (binary %x)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+                KeyValueInformation->Type, KeyValueInformation->DataLength);
+            break;
+        case 4:
+            printfdbg("Key %ls/%ls: %d (%x)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+                KeyValueInformation->Type, *(DWORD*)KeyValueInformation->Data);
+            break;
+        }
+    else   
         printfdbg("Key %ls/%ls: Error (%x)\n",
             GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer, bRet);  
     return bRet; 
