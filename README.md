@@ -14,3 +14,7 @@ OR
 -e (optional) - inject into existing process
 
 -hwid (optional) - hook NtDeviceIoControlFile and spoof SerialNumber
+
+-regmon (optional) - hook NtNtQueryObject
+
+![Screenshot](https://i.imgur.com/9HtcwNB.png)
