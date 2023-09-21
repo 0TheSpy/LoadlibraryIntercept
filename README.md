@@ -15,6 +15,6 @@ OR
 
 -hwid (optional) - hook NtDeviceIoControlFile and spoof SerialNumber
 
--regmon (optional) - hook NtNtQueryObject
+-regmon (optional) - hook NtQueryObject
 
 ![Screenshot](https://i.imgur.com/9HtcwNB.png)
