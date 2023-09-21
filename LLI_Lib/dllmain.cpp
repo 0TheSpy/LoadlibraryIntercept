@@ -590,26 +590,37 @@ NTSTATUS __stdcall hkNtQueryValueKey(HANDLE KeyHandle, PUNICODE_STRING ValueName
     PKEY_VALUE_PARTIAL_INFORMATION KeyValueInformation, ULONG Length, PULONG ResultLength)
 { 
     auto bRet = NtQueryValueKey(KeyHandle, ValueName, KeyValueInformationClass, KeyValueInformation, Length, ResultLength);  
-    if (bRet == ERROR_SUCCESS)
-        switch (KeyValueInformation->Type)
-        {
-        case 1:
-        case 2:
-            printfdbg("Key %ls/%ls: %d (%ls)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
-                KeyValueInformation->Type, remove_non_printable_chars(wstring((wchar_t*)KeyValueInformation->Data)).c_str());
-            break;
-        case 3:
-            printfdbg("Key %ls/%ls: %d (binary %x)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
-                KeyValueInformation->Type, KeyValueInformation->DataLength);
-            break;
-        case 4:
-            printfdbg("Key %ls/%ls: %d (%d)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
-                KeyValueInformation->Type, *(DWORD*)KeyValueInformation->Data);
-            break;
-        }
-    else   
-        printfdbg("Key %ls/%ls: Error (%x)\n",
-            GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer, bRet);  
+
+    if (wcsstr(GetHandleTypeName(KeyHandle).c_str(), L"\MiniDumpAuxiliaryDlls"))
+    {
+        printfdbg("MiniDumpAuxiliaryDlls %x\n", KeyHandle);
+        exit(0);
+        //SuspendThread(GetCurrentThread());
+    }
+    
+    if (regmon) {
+        if (bRet == ERROR_SUCCESS)
+            switch (KeyValueInformation->Type)
+            {
+            case 1:
+            case 2:
+                printfdbg("Key %ls/%ls: %d (%ls)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+                    KeyValueInformation->Type, remove_non_printable_chars(wstring((wchar_t*)KeyValueInformation->Data)).c_str());
+                break;
+            case 3:
+                printfdbg("Key %ls/%ls: %d (binary %x)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+                    KeyValueInformation->Type, KeyValueInformation->DataLength);
+                break;
+            case 4:
+                printfdbg("Key %ls/%ls: %d (%d)\n", GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer,
+                    KeyValueInformation->Type, *(DWORD*)KeyValueInformation->Data);
+                break;
+            }
+        else
+            printfdbg("Key %ls/%ls: Error (%x)\n",
+                GetHandleTypeName(KeyHandle).c_str(), ValueName->Buffer, bRet);
+    }
+
     return bRet; 
 }
  
@@ -638,7 +649,7 @@ NtRaiseHardError_t _NtRaiseHardError = (NtRaiseHardError_t)GetProcAddress(GetMod
 NTSTATUS __stdcall hkNtRaiseHardError(NTSTATUS ErrorStatus, ULONG NumberOfParameters, PUNICODE_STRING UnicodeStringParameterMask, PVOID* Parameters, HARDERROR_RESPONSE_OPTION ResponseOption, PHARDERROR_RESPONSE Response)
 {
     printfdbg("NtRaiseHardError ErrorStatus %x ResponseOption %x\n", ErrorStatus, ResponseOption);
-    return ERROR_SUCCESS;
+    return ERROR_SUCCESS; 
     //return _NtRaiseHardError(ErrorStatus, NumberOfParameters, UnicodeStringParameterMask, Parameters, ResponseOption, Response);
 }
 
@@ -708,10 +719,8 @@ DWORD WINAPI InitFunc() {
         //_NtLdrInitializeThunk = (ZwLdrInitializeThunk_t)DetourFunction((PBYTE)_NtLdrInitializeThunk, (PBYTE)hkNtLdrInitializeThunk); 
     }
 
-    if (regmon)
-    {
-        NtQueryValueKey = (LPNTQUERYVALUEKEY)DetourFunction((PBYTE)NtQueryValueKey, (PBYTE)hkNtQueryValueKey);
-    }
+    NtQueryValueKey = (LPNTQUERYVALUEKEY)DetourFunction((PBYTE)NtQueryValueKey, (PBYTE)hkNtQueryValueKey);
+    
 
     //printfdbg("SetWindowDisplayAffinity %d\n",SetWindowDisplayAffinity(GetForegroundWindow(), WDA_EXCLUDEFROMCAPTURE));
 
@@ -737,11 +746,9 @@ DWORD WINAPI InitFunc() {
         DetourRemove(reinterpret_cast<BYTE*>(_NtCreateFile), reinterpret_cast<BYTE*>(hkCreateFile));
         DetourRemove(reinterpret_cast<BYTE*>(_NtClose), reinterpret_cast<BYTE*>(hkNtClose));
     }
-
-    if (regmon)
-    {
-        DetourRemove(reinterpret_cast<BYTE*>(NtQueryValueKey), reinterpret_cast<BYTE*>(hkNtQueryValueKey)); 
-    }
+    
+    DetourRemove(reinterpret_cast<BYTE*>(NtQueryValueKey), reinterpret_cast<BYTE*>(hkNtQueryValueKey)); 
+    
 
     Sleep(100);
     FreeLibraryAndExitThread(myhModule, 0);
