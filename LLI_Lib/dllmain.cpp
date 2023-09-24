@@ -649,6 +649,7 @@ NtRaiseHardError_t _NtRaiseHardError = (NtRaiseHardError_t)GetProcAddress(GetMod
 NTSTATUS __stdcall hkNtRaiseHardError(NTSTATUS ErrorStatus, ULONG NumberOfParameters, PUNICODE_STRING UnicodeStringParameterMask, PVOID* Parameters, HARDERROR_RESPONSE_OPTION ResponseOption, PHARDERROR_RESPONSE Response)
 {
     printfdbg("NtRaiseHardError ErrorStatus %x ResponseOption %x\n", ErrorStatus, ResponseOption);
+    MessageBoxA(NULL, "NtRaiseHardError", "NtRaiseHardError", MB_OK);
     return ERROR_SUCCESS; 
     //return _NtRaiseHardError(ErrorStatus, NumberOfParameters, UnicodeStringParameterMask, Parameters, ResponseOption, Response);
 }
