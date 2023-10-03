@@ -505,12 +505,18 @@ NTSTATUS __stdcall hkNtDeviceIoControlFile(HANDLE FileHandle, HANDLE Event, PIO_
     return _NtDeviceIoControlFile(FileHandle, Event, ApcRoutine, ApcContext, IoStatusBlock, dwIoControlCode, lpInBuffer, InputBufferLength, lpOutBuffer, OutputBufferLength);
 }
 
-typedef NTSTATUS(NTAPI* ZwCreateProcessEx_t)(OUT PHANDLE ProcessHandle, IN ACCESS_MASK DesiredAccess, IN POBJECT_ATTRIBUTES ObjectAttributes OPTIONAL, IN HANDLE ParentProcess, IN ULONG Flags, IN HANDLE SectionHandle OPTIONAL, IN HANDLE DebugPort OPTIONAL, IN HANDLE ExceptionPort OPTIONAL, IN BOOLEAN InJob);
-ZwCreateProcessEx_t _NtCreateProcessEx = (ZwCreateProcessEx_t)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtCreateProcessEx");
-NTSTATUS __stdcall hkCreateProcessEx(OUT PHANDLE ProcessHandle, IN ACCESS_MASK DesiredAccess, IN POBJECT_ATTRIBUTES ObjectAttributes OPTIONAL, IN HANDLE ParentProcess, IN ULONG Flags, IN HANDLE SectionHandle OPTIONAL, IN HANDLE DebugPort OPTIONAL, IN HANDLE ExceptionPort OPTIONAL, IN BOOLEAN InJob)
+typedef NTSTATUS(WINAPI* MyZwCreateUserProcess)(PHANDLE ProcessHandle, PHANDLE ThreadHandle, ACCESS_MASK ProcessDesiredAccess, ACCESS_MASK ThreadDesiredAccess,
+    POBJECT_ATTRIBUTES ProcessObjectAttributes, POBJECT_ATTRIBUTES ThreadObjectAttributes, ULONG ulProcessFlags, ULONG ulThreadFlags,
+    PRTL_USER_PROCESS_PARAMETERS RtlUserProcessParameters, void* PsCreateInfo, void* PsAttributeList);
+MyZwCreateUserProcess _ZwCreateUserProcess = (MyZwCreateUserProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwCreateUserProcess");
+NTSTATUS __stdcall hkZwCreateUserProcess(PHANDLE ProcessHandle, PHANDLE ThreadHandle, ACCESS_MASK ProcessDesiredAccess, ACCESS_MASK ThreadDesiredAccess,
+    POBJECT_ATTRIBUTES ProcessObjectAttributes, POBJECT_ATTRIBUTES ThreadObjectAttributes, ULONG ulProcessFlags, ULONG ulThreadFlags,
+    PRTL_USER_PROCESS_PARAMETERS RtlUserProcessParameters, void* PsCreateInfo, void* PsAttributeList)
 {
-    printfdbg("\nCreateProcessEx called : %ls\n\n", ObjectAttributes->ObjectName->Buffer);
-    return _NtCreateProcessEx(ProcessHandle, DesiredAccess, ObjectAttributes, ParentProcess, Flags, SectionHandle, DebugPort, ExceptionPort, InJob);
+    printfdbg("CreateUserProcess called: %ls %ls\n", RtlUserProcessParameters->ImagePathName.Buffer, RtlUserProcessParameters->CommandLine.Buffer);
+    return _ZwCreateUserProcess(ProcessHandle, ThreadHandle, ProcessDesiredAccess, ThreadDesiredAccess,
+        ProcessObjectAttributes, ThreadObjectAttributes, ulProcessFlags, ulThreadFlags,
+        RtlUserProcessParameters,  PsCreateInfo, PsAttributeList);
 }
 
 typedef NTSTATUS(NTAPI* ZwLdrInitializeThunk_t) (PCONTEXT NormalContext, DWORD Unknown2, DWORD Unknown3);
