@@ -27,14 +27,14 @@ typedef struct {
 int FindProcByName(wchar_t* processname);
 uintptr_t GetModuleBaseEx(DWORD procId, const char* modName);
 uintptr_t GetProcAddressEx(HANDLE hProcess, uintptr_t moduleBase, const char* function);
-DWORD WINAPI loadLibrary(LoaderData* loaderData);
+uintptr_t WINAPI loadLibrary(LoaderData* loaderData);
 void stub();
 
 int rvm(HANDLE hProcess, PVOID addr, int num, void* buf);
 
 BOOL ComparePattern(HANDLE pHandle, DWORD address, char* pattern, char* mask);
 DWORD ExternalAoBScan(HANDLE pHandle, DWORD moduleBase, char* pattern, char* mask);
-DWORD MyLoadLibrary(HANDLE hProcess, char* dx_binary);
+uintptr_t MyLoadLibrary(HANDLE hProcess, char* dx_binary);
 
 bool NopMemory(HANDLE hProcess, DWORD addr, size_t size);
 char* GetLastErrorAsText();
