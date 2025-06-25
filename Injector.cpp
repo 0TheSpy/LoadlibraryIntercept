@@ -131,7 +131,7 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
 	LPWSTR* szArglist;
 	int nArgs = 0; 
 	szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs); 
-	for (int i = 0; i < nArgs; i++) {  
+	for (int i = 1; i < nArgs; i++) {  
 		if (wcsstr(szArglist[i], L"-t") || wcsstr(szArglist[i], L"-target")) {
 			if (i + 1 < nArgs) {
 				i++; 
