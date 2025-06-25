@@ -205,6 +205,10 @@ NTSTATUS __stdcall hkLdrUnloadDll(HMODULE hModule)
     wchar_t* modName = GetModuleOfAddress((DWORD)hModule);
     if (!hwidspoof)
         printfdbg("Unloading %x %ls\n", hModule, GetModuleOfAddress((DWORD)hModule));
+    
+    if (pauseEveryModule && (!wcsstr(GetModuleOfAddress((DWORD)hModule), L"ntdll.dll")) && (!wcsstr(GetModuleOfAddress((DWORD)hModule), L"apphelp.dll")))
+    system("pause");
+
     return NtLdrUnloadDll(hModule);
 }
 
